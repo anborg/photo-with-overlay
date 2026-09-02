@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Field Photo Capture</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+  <section class="camera-panel">
+    <div class="preview"><video id="video" autoplay muted playsinline></video><div id="cameraMessage">Select Start camera</div></div>
+    <div class="gallery-wrap"><div id="emptyGallery">Captured photos will appear here</div><div id="gallery"></div></div>
+  </section>
+  <aside>
+    <h1>FIELD PHOTO</h1><label>Operator<input id="user"></label><label>Camera<select id="camera"></select></label><button id="startCamera">Start camera</button>
+    <label class="check"><input type="checkbox" id="manual"> Use manual location (development)</label>
+    <label>Latitude<input id="latitude" type="number" step="any"></label><label>Longitude<input id="longitude" type="number" step="any"></label>
+    <label>Location label (optional)<input id="address"></label><label class="check"><input type="checkbox" id="reverse"> Reverse-geocode GPS location</label>
+    <label>Watermark position<select id="position"><option value="top-left">Top left</option><option value="top-right">Top right</option><option value="bottom-left">Bottom left</option><option value="bottom-right">Bottom right</option></select></label>
+    <div class="pair"><label>Font family<input id="fontFamily"></label><label>Size<input id="fontSize" type="number" min="12" max="120"></label></div>
+    <label>Output folder<div class="folder"><input id="output"><button id="browse" title="Browse">…</button></div></label>
+  </aside>
+  <footer><div id="status">Ready</div><button id="capture" disabled>CAPTURE PHOTO</button></footer>
+</main><canvas id="canvas" hidden></canvas><script src="app.js"></script></body></html>

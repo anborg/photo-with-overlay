@@ -1,0 +1,1 @@
+{"private":true,"scripts":{"build":"node -e \"console.log('Static frontend ready')\""}}
