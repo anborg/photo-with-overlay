@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/aamkam/photo-with-overlay/internal/config"
 	"github.com/aamkam/photo-with-overlay/internal/photo"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -22,50 +20,13 @@ type App struct {
 	client *http.Client
 }
 
-type SaveRequest struct {
-	JPEGDataURL    string   `json:"jpegDataUrl"`
-	CapturedAt     string   `json:"capturedAt"`
-	User           string   `json:"user"`
-	Latitude       float64  `json:"latitude"`
-	Longitude      float64  `json:"longitude"`
-	Accuracy       *float64 `json:"accuracy"`
-	Location       string   `json:"location"`
-	LocationSource string   `json:"locationSource"`
-	OutputFolder   string   `json:"outputFolder"`
-}
-
 func NewApp() *App {
-	return &App{photos: photo.NewService(), client: &http.Client{Timeout: 8 * time.Second}}
-}
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
-func (a *App) shutdown(context.Context)    {}
-
-func (a *App) LoadSettings() config.Settings               { return config.Load() }
-func (a *App) SaveSettings(settings config.Settings) error { return config.Save(settings) }
-
-func (a *App) SelectOutputFolder(current string) (string, error) {
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "Select photo output folder", DefaultDirectory: current})
+	return &App{ctx: context.Background(), photos: photo.NewService(), client: &http.Client{Timeout: 8 * time.Second}}
 }
 
-func (a *App) SavePhoto(req SaveRequest) (photo.Item, error) {
-	comma := strings.IndexByte(req.JPEGDataURL, ',')
-	if comma < 0 {
-		return photo.Item{}, fmt.Errorf("invalid JPEG data")
-	}
-	data, err := base64.StdEncoding.DecodeString(req.JPEGDataURL[comma+1:])
-	if err != nil {
-		return photo.Item{}, fmt.Errorf("decode JPEG: %w", err)
-	}
-	when, err := time.Parse(time.RFC3339Nano, req.CapturedAt)
-	if err != nil {
-		return photo.Item{}, fmt.Errorf("capture time: %w", err)
-	}
-	return a.photos.Save(data, photo.Metadata{CapturedAt: when, User: req.User, Latitude: req.Latitude,
-		Longitude: req.Longitude, Accuracy: req.Accuracy, Location: req.Location, LocationSource: req.LocationSource}, req.OutputFolder)
-}
-
+func (a *App) LoadSettings() config.Settings                  { return config.Load() }
+func (a *App) SaveSettings(settings config.Settings) error    { return config.Save(settings) }
 func (a *App) ListPhotos(folder string) ([]photo.Item, error) { return a.photos.List(folder) }
-func (a *App) Thumbnail(path, folder string) (string, error)  { return a.photos.Thumbnail(path, folder) }
 
 func (a *App) ShowPhoto(path, folder string) error {
 	clean, err := photo.ValidPhotoPath(path, folder)
@@ -84,8 +45,8 @@ func (a *App) DeletePhoto(path, folder string) error {
 }
 
 type LocationDetails struct {
-	Address  string `json:"address"`
-	RoadClue string `json:"roadClue"`
+	Address  string
+	RoadClue string
 }
 
 func (a *App) ReverseGeocode(latitude, longitude float64) (LocationDetails, error) {
@@ -105,7 +66,6 @@ func (a *App) ReverseGeocode(latitude, longitude float64) (LocationDetails, erro
 		return LocationDetails{}, err
 	}
 	details := LocationDetails{Address: address}
-
 	query := fmt.Sprintf(`[out:json][timeout:8];way(around:600,%f,%f)["highway"]["name"];out tags geom;`, latitude, longitude)
 	form := url.Values{"data": {query}}
 	overpassReq, _ := http.NewRequestWithContext(a.ctx, http.MethodPost, "https://overpass-api.de/api/interpreter", strings.NewReader(form.Encode()))
