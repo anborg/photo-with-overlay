@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -82,17 +83,41 @@ func (a *App) DeletePhoto(path, folder string) error {
 	return os.Remove(clean)
 }
 
-func (a *App) ReverseGeocode(latitude, longitude float64) (string, error) {
+type LocationDetails struct {
+	Address  string `json:"address"`
+	RoadClue string `json:"roadClue"`
+}
+
+func (a *App) ReverseGeocode(latitude, longitude float64) (LocationDetails, error) {
 	u := fmt.Sprintf("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=%f&lon=%f&zoom=18", latitude, longitude)
 	req, _ := http.NewRequestWithContext(a.ctx, http.MethodGet, u, nil)
 	req.Header.Set("User-Agent", "PhotoWithOverlayGo/1.0 (municipal field-photo application)")
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return "", err
+		return LocationDetails{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("reverse geocoder returned %s", resp.Status)
+		return LocationDetails{}, fmt.Errorf("reverse geocoder returned %s", resp.Status)
 	}
-	return photo.ParseNominatimAddress(resp.Body)
+	address, road, err := photo.ParseNominatimLocation(resp.Body)
+	if err != nil {
+		return LocationDetails{}, err
+	}
+	details := LocationDetails{Address: address}
+
+	query := fmt.Sprintf(`[out:json][timeout:8];way(around:600,%f,%f)["highway"]["name"];out tags geom;`, latitude, longitude)
+	form := url.Values{"data": {query}}
+	overpassReq, _ := http.NewRequestWithContext(a.ctx, http.MethodPost, "https://overpass-api.de/api/interpreter", strings.NewReader(form.Encode()))
+	overpassReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	overpassReq.Header.Set("User-Agent", "PhotoWithOverlayGo/1.0 (municipal field-photo application)")
+	if overpassResp, requestErr := a.client.Do(overpassReq); requestErr == nil {
+		defer overpassResp.Body.Close()
+		if overpassResp.StatusCode == http.StatusOK {
+			if roads, parseErr := photo.ParseNearbyRoads(overpassResp.Body, road, latitude, longitude, 2); parseErr == nil && len(roads) > 0 {
+				details.RoadClue = "Nearby cross roads: " + strings.Join(roads, " / ")
+			}
+		}
+	}
+	return details, nil
 }

@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -134,11 +135,16 @@ func ValidPhotoPath(path, folder string) (string, error) {
 }
 
 func ParseNominatimAddress(r io.Reader) (string, error) {
+	address, _, err := ParseNominatimLocation(r)
+	return address, err
+}
+
+func ParseNominatimLocation(r io.Reader) (string, string, error) {
 	var payload struct {
 		Address map[string]string `json:"address"`
 	}
 	if err := json.NewDecoder(r).Decode(&payload); err != nil {
-		return "", err
+		return "", "", err
 	}
 	street := first(payload.Address, "road", "pedestrian", "footway", "path")
 	city := first(payload.Address, "city", "town", "village", "municipality")
@@ -150,7 +156,61 @@ func ParseNominatimAddress(r io.Reader) (string, error) {
 			parts = append(parts, strings.TrimSpace(value))
 		}
 	}
-	return strings.Join(parts, ", "), nil
+	return strings.Join(parts, ", "), street, nil
+}
+
+func ParseNearbyRoads(r io.Reader, currentRoad string, latitude, longitude float64, limit int) ([]string, error) {
+	var payload struct {
+		Elements []struct {
+			Tags     map[string]string `json:"tags"`
+			Geometry []struct {
+				Lat float64 `json:"lat"`
+				Lon float64 `json:"lon"`
+			} `json:"geometry"`
+		} `json:"elements"`
+	}
+	if err := json.NewDecoder(r).Decode(&payload); err != nil {
+		return nil, err
+	}
+	type candidate struct {
+		name     string
+		distance float64
+	}
+	byName := map[string]float64{}
+	for _, element := range payload.Elements {
+		name := strings.TrimSpace(element.Tags["name"])
+		if name == "" || strings.EqualFold(name, strings.TrimSpace(currentRoad)) {
+			continue
+		}
+		distance := math.Inf(1)
+		for _, point := range element.Geometry {
+			distance = math.Min(distance, haversineMetres(latitude, longitude, point.Lat, point.Lon))
+		}
+		if previous, exists := byName[name]; !exists || distance < previous {
+			byName[name] = distance
+		}
+	}
+	candidates := make([]candidate, 0, len(byName))
+	for name, distance := range byName {
+		candidates = append(candidates, candidate{name: name, distance: distance})
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].distance < candidates[j].distance })
+	if limit < 0 || limit > len(candidates) {
+		limit = len(candidates)
+	}
+	roads := make([]string, limit)
+	for i := 0; i < limit; i++ {
+		roads[i] = candidates[i].name
+	}
+	return roads, nil
+}
+
+func haversineMetres(lat1, lon1, lat2, lon2 float64) float64 {
+	const earthRadius = 6371000
+	toRadians := math.Pi / 180
+	dLat, dLon := (lat2-lat1)*toRadians, (lon2-lon1)*toRadians
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(lat1*toRadians)*math.Cos(lat2*toRadians)*math.Sin(dLon/2)*math.Sin(dLon/2)
+	return earthRadius * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 func first(values map[string]string, keys ...string) string {
 	for _, k := range keys {

@@ -11,7 +11,9 @@ import (
 
 func TestInsertAddsExifAndXMPAndPreservesJPEG(t *testing.T) {
 	var source bytes.Buffer
-	if err := jpeg.Encode(&source, image.NewUniform(color.RGBA{20, 40, 60, 255}), nil); err != nil {
+	sourceImage := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	sourceImage.Set(0, 0, color.RGBA{20, 40, 60, 255})
+	if err := jpeg.Encode(&source, sourceImage, nil); err != nil {
 		t.Fatal(err)
 	}
 	accuracy := 4.5
