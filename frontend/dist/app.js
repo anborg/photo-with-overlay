@@ -1,6 +1,15 @@
 const $=id=>document.getElementById(id), api=()=>window.go.main.App;
 let stream=null, settings=null;
 const fields={user:$('user'),outputFolder:$('output'),watermarkPosition:$('position'),fontFamily:$('fontFamily'),fontSize:$('fontSize'),useManualLocation:$('manual'),manualLatitude:$('latitude'),manualLongitude:$('longitude'),manualAddress:$('address'),reverseGeocode:$('reverse'),cameraId:$('camera')};
+const ZOOM_MIN=.7,ZOOM_MAX=1.5,ZOOM_STEP=.1;
+let uiZoom=Number(localStorage.getItem('uiZoom'))||1,uiTheme=localStorage.getItem('uiTheme')||'dark';
+
+function applyView(){uiZoom=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,Math.round(uiZoom*10)/10));document.documentElement.style.zoom=uiZoom;document.documentElement.dataset.theme=uiTheme;$('zoomReset').textContent=`${Math.round(uiZoom*100)}%`;const dark=uiTheme==='dark';$('themeToggle').title=dark?'Switch to light view':'Switch to dark view';$('themeToggle').setAttribute('aria-label',$('themeToggle').title);localStorage.setItem('uiZoom',String(uiZoom));localStorage.setItem('uiTheme',uiTheme)}
+$('zoomOut').addEventListener('click',()=>{uiZoom-=ZOOM_STEP;applyView()});
+$('zoomIn').addEventListener('click',()=>{uiZoom+=ZOOM_STEP;applyView()});
+$('zoomReset').addEventListener('click',()=>{uiZoom=1;applyView()});
+$('themeToggle').addEventListener('click',()=>{uiTheme=uiTheme==='dark'?'light':'dark';applyView()});
+applyView();
 
 window.addEventListener('DOMContentLoaded',async()=>{try{settings=await api().LoadSettings();applySettings(settings);await enumerateCameras();await refreshGallery()}catch(e){status(e)}});
 function applySettings(s){for(const[k,el]of Object.entries(fields)){if(el.type==='checkbox')el.checked=!!s[k];else el.value=s[k]??''}locationMode()}
