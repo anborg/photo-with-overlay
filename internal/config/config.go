@@ -1,3 +1,4 @@
+// Package config persists user-selectable application settings.
 package config
 
 import (
@@ -7,6 +8,7 @@ import (
 	"strings"
 )
 
+// Settings contains frontend, camera, output, and location preferences.
 type Settings struct {
 	User              string  `json:"user"`
 	OutputFolder      string  `json:"outputFolder"`
@@ -24,6 +26,7 @@ type Settings struct {
 	CameraID          string  `json:"cameraId"`
 }
 
+// Defaults returns settings suitable for a first application launch.
 func Defaults() Settings {
 	home, _ := os.UserHomeDir()
 	return Settings{User: strings.ToUpper(os.Getenv("USERNAME")), OutputFolder: filepath.Join(home, "Pictures", "Field Photos"),
@@ -35,6 +38,9 @@ func path() string {
 	dir, _ := os.UserConfigDir()
 	return filepath.Join(dir, "PhotoWithOverlayGo", "settings.json")
 }
+
+// Load reads persisted settings, falling back to defaults when the settings
+// file is absent or cannot be decoded.
 func Load() Settings {
 	s := Defaults()
 	data, err := os.ReadFile(path())
@@ -43,6 +49,8 @@ func Load() Settings {
 	}
 	return s
 }
+
+// Save validates and serializes settings to the user's config directory.
 func Save(s Settings) error {
 	if strings.TrimSpace(s.User) == "" {
 		return &ValidationError{"operator is required"}
@@ -60,6 +68,8 @@ func Save(s Settings) error {
 	return os.WriteFile(path(), data, 0600)
 }
 
+// ValidationError reports a user-correctable settings problem.
 type ValidationError struct{ Message string }
 
+// Error implements the error interface.
 func (e *ValidationError) Error() string { return e.Message }

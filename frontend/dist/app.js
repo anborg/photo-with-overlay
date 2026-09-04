@@ -1,45 +1,113 @@
-const $=id=>document.getElementById(id), api=()=>window.go.main.App;
-let stream=null, settings=null;
-const fields={user:$('user'),outputFolder:$('output'),useManualLocation:$('manual'),manualLatitude:$('latitude'),manualLongitude:$('longitude'),manualAddress:$('address'),reverseGeocode:$('reverse'),cameraId:$('camera')};
-let watermarkX=0,watermarkY=1,watermarkWidth=.42;
-const ZOOM_MIN=.7,ZOOM_MAX=1.5,ZOOM_STEP=.1;
-const THEMES=['hc-light','hc-dark','pretty-light','pretty-dark'],THEME_NAMES={'hc-light':'High contrast day','hc-dark':'High contrast night','pretty-light':'Indoor calm light','pretty-dark':'Indoor calm dark'};
-let uiZoom=Number(localStorage.getItem('uiZoom'))||1,uiTheme=localStorage.getItem('uiTheme')||'hc-dark';
-if(uiTheme==='light')uiTheme='hc-light';if(uiTheme==='dark')uiTheme='hc-dark';if(!THEMES.includes(uiTheme))uiTheme='hc-dark';
+import {backend, byId, showStatus} from './dom.js';
+import {setupViewPreferences} from './view-preferences.js';
+import {applySettings, readSettings, saveSettings, setupSettingsControls} from './settings.js';
+import {setupCamera} from './camera.js';
+import {getLocation, refreshAutomaticLocation} from './location.js';
+import {createWatermarkController, drawWatermark} from './watermark.js';
+import {refreshGallery} from './gallery.js';
+import {setupLayoutControls} from './layout.js';
 
-function applyView(){uiZoom=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,Math.round(uiZoom*10)/10));document.documentElement.style.zoom=uiZoom;document.documentElement.dataset.theme=uiTheme;$('zoomReset').textContent=`${Math.round(uiZoom*100)}%`;$('themeName').textContent=THEME_NAMES[uiTheme];const next=THEMES[(THEMES.indexOf(uiTheme)+1)%THEMES.length];$('themeToggle').title=`${THEME_NAMES[uiTheme]}. Switch to ${THEME_NAMES[next]}`;$('themeToggle').setAttribute('aria-label',$('themeToggle').title);localStorage.setItem('uiZoom',String(uiZoom));localStorage.setItem('uiTheme',uiTheme)}
-$('zoomOut').addEventListener('click',()=>{uiZoom-=ZOOM_STEP;applyView()});
-$('zoomIn').addEventListener('click',()=>{uiZoom+=ZOOM_STEP;applyView()});
-$('zoomReset').addEventListener('click',()=>{uiZoom=1;applyView()});
-$('themeToggle').addEventListener('click',()=>{uiTheme=THEMES[(THEMES.indexOf(uiTheme)+1)%THEMES.length];applyView()});
-applyView();
+let currentSettings = null;
+let watermark;
+let currentRoadClue = '';
 
-window.addEventListener('DOMContentLoaded',async()=>{try{settings=await api().LoadSettings();applySettings(settings);await enumerateCameras();await refreshGallery()}catch(e){status(e)}});
-function applySettings(s){for(const[k,el]of Object.entries(fields)){if(el.type==='checkbox')el.checked=!!s[k];else el.value=s[k]??''}watermarkX=Number.isFinite(s.watermarkX)?s.watermarkX:0;watermarkY=Number.isFinite(s.watermarkY)?s.watermarkY:1;watermarkWidth=Number.isFinite(s.watermarkWidth)&&s.watermarkWidth>0?s.watermarkWidth:.42;positionMarker();locationMode()}
-function readSettings(){const s={};for(const[k,el]of Object.entries(fields)){s[k]=el.type==='checkbox'?el.checked:el.type==='number'?Number(el.value):el.value}s.fontFamily='Arial';s.fontSize=36;s.watermarkX=watermarkX;s.watermarkY=watermarkY;s.watermarkWidth=watermarkWidth;s.watermarkPosition='custom';return s}
-async function persist(){settings=readSettings();await api().SaveSettings(settings);return settings}
-function status(message){$('status').textContent=message?.message||String(message)}
-function locationMode(){const manual=$('manual').checked;$('latitude').disabled=$('longitude').disabled=$('address').disabled=!manual;$('reverse').disabled=manual}
-$('manual').addEventListener('change',locationMode);
+setupViewPreferences();
+setupLayoutControls();
 
-async function enumerateCameras(){let devices=await navigator.mediaDevices.enumerateDevices();let cameras=devices.filter(d=>d.kind==='videoinput');$('camera').innerHTML=cameras.map((d,i)=>`<option value="${escapeHTML(d.deviceId)}">${escapeHTML(d.label||`Camera ${i}`)}</option>`).join('');if(settings.cameraId)$('camera').value=settings.cameraId}
-$('startCamera').addEventListener('click',async()=>{try{if(stream)stream.getTracks().forEach(t=>t.stop());const exact=$('camera').value;stream=await navigator.mediaDevices.getUserMedia({video:exact?{deviceId:{exact},width:{ideal:1920},height:{ideal:1080}}:{width:{ideal:1920},height:{ideal:1080}},audio:false});$('video').srcObject=stream;$('cameraMessage').hidden=true;$('capture').disabled=false;$('startCamera').textContent='Restart camera';await enumerateCameras();await persist();status('Camera ready')}catch(e){status(`Camera error: ${e.message}`)}});
+async function persistSettings() {
+  currentSettings = await saveSettings(watermark.state());
+  return currentSettings;
+}
 
-$('browse').addEventListener('click',async()=>{try{const selected=await api().SelectOutputFolder($('output').value);if(selected){$('output').value=selected;await persist();await refreshGallery()}}catch(e){status(e)}});
-$('capture').addEventListener('click',async()=>{const button=$('capture');button.disabled=true;try{const s=await persist(),fix=await getLocation(s),now=new Date(),video=$('video'),canvas=$('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;const ctx=canvas.getContext('2d');ctx.drawImage(video,0,0);drawWatermark(ctx,canvas,s,now,fix);status('Writing photo and metadata…');const item=await api().SavePhoto({jpegDataUrl:canvas.toDataURL('image/jpeg',.92),capturedAt:localISO(now),user:s.user,latitude:fix.latitude,longitude:fix.longitude,accuracy:fix.accuracy,location:fix.address,locationSource:fix.source,outputFolder:s.outputFolder});status(`Saved: ${item.path}`);await refreshGallery()}catch(e){status(`Capture failed: ${e.message||e}`)}finally{button.disabled=!stream}});
+watermark = createWatermarkController(persistSettings);
+for (const id of ['user', 'latitude', 'longitude', 'address']) {
+  byId(id).addEventListener('input', () => watermark.refresh({roadClue: currentRoadClue}));
+}
+byId('manual').addEventListener('change', () => {
+  currentRoadClue = '';
+  watermark.refresh();
+});
+setInterval(() => watermark.refresh({roadClue: currentRoadClue}), 1000);
+const camera = setupCamera({
+  getSettings: () => currentSettings || readSettings(watermark.state()),
+  saveSettings: persistSettings
+});
+setupSettingsControls({
+  watermarkState: watermark.state,
+  refreshGallery,
+  refreshAutomaticLocation: () => refreshAutomaticLocation(populateAutomaticLocation)
+});
 
-async function getLocation(s){if(s.useManualLocation)return{latitude:s.manualLatitude,longitude:s.manualLongitude,accuracy:null,address:s.manualAddress,roadClue:'',source:'Manual'};status('Getting GPS location…');const p=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:20000,maximumAge:10000}));let address='',roadClue='';if(s.reverseGeocode){status('Looking up address and nearby roads…');const location=await api().ReverseGeocode(p.coords.latitude,p.coords.longitude);address=location.address;roadClue=location.roadClue}return{latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy,address,roadClue,source:'Windows Location'}}
-function drawWatermark(ctx,canvas,s,now,fix){const widthRatio=Math.max(.2,Math.min(.75,s.watermarkWidth??.42)),size=Math.max(12,Math.min(120,Math.round(canvas.width*widthRatio/22))),smallSize=Math.max(10,Math.round(size*.62)),family='Arial';const lines=[{text:localStamp(now),size},{text:`User: ${s.user}`,size},{text:`${fix.latitude.toFixed(6)}, ${fix.longitude.toFixed(6)}`,size}];if(fix.address)lines.push({text:fix.address,size});if(fix.roadClue)lines.push({text:fix.roadClue,size:smallSize});const pad=Math.max(10,Math.round(size*.55)),gap=Math.max(4,Math.round(size*.17));for(const line of lines){ctx.font=`bold ${line.size}px ${family}`;line.width=ctx.measureText(line.text).width;line.height=line.size*1.2}const w=Math.max(...lines.map(line=>line.width))+pad*2,h=lines.reduce((sum,line)=>sum+line.height,0)+(lines.length-1)*gap+pad*2,x=Math.round(Math.max(0,Math.min(1,s.watermarkX??0))*Math.max(0,canvas.width-w)),y=Math.round(Math.max(0,Math.min(1,s.watermarkY??1))*Math.max(0,canvas.height-h));ctx.fillStyle='rgba(0,0,0,.67)';ctx.fillRect(x,y,w,h);ctx.fillStyle='#fff';ctx.textBaseline='top';let lineY=y+pad;for(const line of lines){ctx.font=`bold ${line.size}px ${family}`;ctx.fillText(line.text,x+pad,lineY);lineY+=line.height+gap}}
-function localStamp(d){const p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`}
-function localISO(d){const p=(n,w=2)=>String(n).padStart(w,'0'),offset=-d.getTimezoneOffset(),sign=offset>=0?'+':'-',oh=p(Math.floor(Math.abs(offset)/60)),om=p(Math.abs(offset)%60);return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}${sign}${oh}:${om}`}
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    currentSettings = await backend().LoadSettings();
+    applySettings(currentSettings);
+    watermark.load(currentSettings);
+    watermark.refresh();
+    await camera.enumerate(currentSettings);
+    byId('cameraMessage').textContent = 'Starting camera…';
+    await camera.start();
+    await refreshGallery();
+    if (!currentSettings.useManualLocation) refreshAutomaticLocation(populateAutomaticLocation);
+  } catch (error) {
+    showStatus(error);
+  }
+});
 
-const marker=$('watermarkMarker'),resizeHandle=$('watermarkResize'),preview=document.querySelector('.preview');
-function positionMarker(){marker.style.width=`${Math.max(170,watermarkWidth*preview.clientWidth)}px`;const scale=Math.max(.72,Math.min(1.7,marker.offsetWidth/330));marker.style.setProperty('--marker-scale',scale);const maxX=Math.max(0,preview.clientWidth-marker.offsetWidth),maxY=Math.max(0,preview.clientHeight-marker.offsetHeight);marker.style.left=`${watermarkX*maxX}px`;marker.style.top=`${watermarkY*maxY}px`;marker.setAttribute('aria-valuetext',`${Math.round(watermarkX*100)}% from left, ${Math.round(watermarkY*100)}% from top, ${Math.round(watermarkWidth*100)}% width`)}
-function moveMarker(clientX,clientY,offsetX,offsetY){const bounds=preview.getBoundingClientRect(),markerBounds=marker.getBoundingClientRect(),maxX=Math.max(0,bounds.width-markerBounds.width),maxY=Math.max(0,bounds.height-markerBounds.height);watermarkX=maxX?Math.max(0,Math.min(1,(clientX-bounds.left-offsetX)/maxX)):0;watermarkY=maxY?Math.max(0,Math.min(1,(clientY-bounds.top-offsetY)/maxY)):0;positionMarker()}
-marker.addEventListener('pointerdown',event=>{event.preventDefault();marker.setPointerCapture(event.pointerId);const bounds=marker.getBoundingClientRect(),offsetX=event.clientX-bounds.left,offsetY=event.clientY-bounds.top;const drag=move=>moveMarker(move.clientX,move.clientY,offsetX,offsetY),done=async()=>{marker.removeEventListener('pointermove',drag);marker.removeEventListener('pointerup',done);marker.removeEventListener('pointercancel',done);try{await persist();status('Watermark position saved')}catch(e){status(e)}};marker.addEventListener('pointermove',drag);marker.addEventListener('pointerup',done);marker.addEventListener('pointercancel',done)});
-marker.addEventListener('keydown',async event=>{const step=event.shiftKey ? 0.05 : 0.01;if(event.key==='ArrowLeft')watermarkX-=step;else if(event.key==='ArrowRight')watermarkX+=step;else if(event.key==='ArrowUp')watermarkY-=step;else if(event.key==='ArrowDown')watermarkY+=step;else return;event.preventDefault();watermarkX=Math.max(0,Math.min(1,watermarkX));watermarkY=Math.max(0,Math.min(1,watermarkY));positionMarker();try{await persist()}catch(e){status(e)}});
-resizeHandle.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();resizeHandle.setPointerCapture(event.pointerId);const resize=move=>{const previewBounds=preview.getBoundingClientRect(),markerBounds=marker.getBoundingClientRect();watermarkWidth=Math.max(.2,Math.min(.75,(move.clientX-markerBounds.left)/previewBounds.width));positionMarker()},done=async()=>{resizeHandle.removeEventListener('pointermove',resize);resizeHandle.removeEventListener('pointerup',done);resizeHandle.removeEventListener('pointercancel',done);try{await persist();status('Watermark size saved')}catch(e){status(e)}};resizeHandle.addEventListener('pointermove',resize);resizeHandle.addEventListener('pointerup',done);resizeHandle.addEventListener('pointercancel',done)});
-new ResizeObserver(positionMarker).observe(preview);
+async function populateAutomaticLocation(location) {
+  if (!location || byId('manual').checked) return;
+  byId('latitude').value = location.latitude.toFixed(6);
+  byId('longitude').value = location.longitude.toFixed(6);
+  byId('address').value = location.address;
+  currentRoadClue = location.roadClue || '';
+  watermark.refresh({roadClue: currentRoadClue});
+  await persistSettings();
+  showStatus('GPS and location updated');
+}
 
-async function refreshGallery(){const folder=$('output').value;if(!folder)return;try{const photos=await api().ListPhotos(folder),gallery=$('gallery');gallery.innerHTML='';$('emptyGallery').hidden=photos.length>0;for(const photo of photos){const card=document.createElement('div');card.className='photo';card.innerHTML=`<div class="thumb"><img><div class="name">${escapeHTML(photo.name)}</div></div><div class="actions"><button class="show">◉ Show</button><button class="delete">✕ Delete</button></div>`;gallery.append(card);card.querySelector('img').src=await api().Thumbnail(photo.path,folder);card.querySelector('.show').onclick=()=>api().ShowPhoto(photo.path,folder).catch(status);card.querySelector('.delete').onclick=async()=>{if(confirm(`Permanently delete this photo?\n\n${photo.name}`)){try{await api().DeletePhoto(photo.path,folder);status(`Deleted: ${photo.name}`);await refreshGallery()}catch(e){status(e)}}}}}catch(e){status(e)}}
-function escapeHTML(value){return String(value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+byId('capture').addEventListener('click', async () => {
+  const button = byId('capture');
+  button.disabled = true;
+  try {
+    const settings = await persistSettings();
+    const location = await getLocation(settings);
+    const capturedAt = new Date();
+    const video = byId('video');
+    const canvas = byId('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0);
+    drawWatermark(context, canvas, settings, capturedAt, location);
+
+    showStatus('Writing photo and metadata…');
+    const item = await backend().SavePhoto({
+      jpegDataUrl: canvas.toDataURL('image/jpeg', 0.92),
+      capturedAt: localISO(capturedAt),
+      user: settings.user,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: location.accuracy,
+      location: location.address,
+      locationSource: location.source,
+      outputFolder: settings.outputFolder
+    });
+    showStatus(`Saved: ${item.path}`);
+    await refreshGallery();
+  } catch (error) {
+    showStatus(`Capture failed: ${error.message || error}`);
+  } finally {
+    button.disabled = !camera.isRunning();
+  }
+});
+
+function localISO(date) {
+  const pad = (number, width = 2) => String(number).padStart(width, '0');
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const offsetHours = pad(Math.floor(Math.abs(offset) / 60));
+  const offsetMinutes = pad(Math.abs(offset) % 60);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.` +
+    `${pad(date.getMilliseconds(), 3)}${sign}${offsetHours}:${offsetMinutes}`;
+}

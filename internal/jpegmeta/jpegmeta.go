@@ -1,3 +1,4 @@
+// Package jpegmeta embeds EXIF and XMP capture metadata in JPEG images.
 package jpegmeta
 
 import (
@@ -10,6 +11,7 @@ import (
 	"time"
 )
 
+// Metadata contains the capture, operator, and location values written to JPEG metadata.
 type Metadata struct {
 	CapturedAt          time.Time
 	User                string
@@ -24,6 +26,8 @@ type entry struct {
 	value     []byte
 }
 
+// Insert adds EXIF and XMP APP1 segments immediately after the JPEG start marker.
+// The input byte slice is not modified.
 func Insert(jpeg []byte, m Metadata) ([]byte, error) {
 	if len(jpeg) < 2 || jpeg[0] != 0xff || jpeg[1] != 0xd8 {
 		return nil, fmt.Errorf("invalid JPEG")
