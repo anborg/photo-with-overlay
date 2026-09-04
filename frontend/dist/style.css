@@ -19,7 +19,7 @@
   color-scheme: dark;
 }
 
-:root[data-theme="light"] {
+:root[data-theme="hc-light"] {
   --page: #f4f4f4;
   --text: #000000;
   --panel: #d9dde1;
@@ -40,6 +40,48 @@
   color-scheme: light;
 }
 
+:root[data-theme="pretty-light"] {
+  --page: #e9eeec;
+  --text: #263330;
+  --panel: #d4ddda;
+  --gallery: #dde5e2;
+  --border: #74827e;
+  --card: #f7f9f8;
+  --label: #34443f;
+  --muted: #62716c;
+  --input-bg: #f8faf9;
+  --input-text: #263330;
+  --button-bg: #e3eae7;
+  --button-text: #263330;
+  --accent: #527d75;
+  --accent-text: #ffffff;
+  --danger: #924f58;
+  --disabled: #aeb9b5;
+  --focus: #557a9b;
+  color-scheme: light;
+}
+
+:root[data-theme="pretty-dark"] {
+  --page: #17121d;
+  --text: #f7e9f0;
+  --panel: #0d0a11;
+  --gallery: #211927;
+  --border: #725b7e;
+  --card: #2a2031;
+  --label: #ead9e4;
+  --muted: #bda9b7;
+  --input-bg: #2f2437;
+  --input-text: #fff7fb;
+  --button-bg: #382942;
+  --button-text: #fff7fb;
+  --accent: #c084fc;
+  --accent-text: #170d20;
+  --danger: #ff7aa8;
+  --disabled: #66596b;
+  --focus: #5eead4;
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; font-family: "Segoe UI", sans-serif; background: var(--page); color: var(--text); }
 main { height: 100vh; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) 330px; grid-template-rows: minmax(0, 1fr) auto; gap: 16px; }
@@ -47,6 +89,13 @@ main { height: 100vh; padding: 16px; display: grid; grid-template-columns: minma
 .preview { min-height: 0; position: relative; display: grid; place-items: center; background: #000; }
 .preview video { width: 100%; height: 100%; object-fit: contain; }
 .preview #cameraMessage { position: absolute; font-size: 26px; font-weight: 700; color: #fff; text-shadow: 0 2px 3px #000; }
+#watermarkMarker { --marker-scale: 1; position: absolute; z-index: 2; width: 42%; min-height: calc(82px * var(--marker-scale)); padding: calc(10px * var(--marker-scale)) calc(12px * var(--marker-scale)); display: flex; flex-direction: column; justify-content: center; gap: calc(2px * var(--marker-scale)); overflow: visible; background: rgba(0, 0, 0, .68); color: #fff; border: 3px dashed var(--accent); border-radius: 5px; box-shadow: 0 0 0 2px rgba(0, 0, 0, .65); cursor: move; touch-action: none; user-select: none; }
+#watermarkMarker strong { font-size: calc(16px * var(--marker-scale)); }
+#watermarkMarker span { font-size: calc(14px * var(--marker-scale)); font-weight: 700; }
+#watermarkMarker small { font-size: calc(11px * var(--marker-scale)); color: #f1f1f1; }
+#watermarkResize { position: absolute; right: -10px; bottom: -10px; width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; background: var(--accent); border: 3px solid #fff; border-radius: 4px; cursor: nwse-resize; touch-action: none; }
+#watermarkResize::before { content: ""; position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-right: 2px solid var(--accent-text); border-bottom: 2px solid var(--accent-text); }
+#watermarkMarker:focus-visible { outline: 4px solid var(--focus); outline-offset: 3px; }
 .gallery-wrap { position: relative; background: var(--gallery); border-top: 2px solid var(--border); overflow: hidden; padding: 10px; }
 #gallery { height: 100%; display: flex; gap: 10px; overflow-x: auto; }
 #emptyGallery { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-weight: 600; }
@@ -64,13 +113,18 @@ aside { overflow-y: auto; overflow-x: hidden; padding: 4px; }
 h1 { font-size: 26px; margin: 0; white-space: nowrap; }
 .brand-icon { width: 42px; height: 42px; border: 2px solid var(--accent); border-radius: 9px; vertical-align: middle; margin-right: 10px; }
 .view-controls { display: flex; gap: 6px; align-items: center; justify-content: flex-end; width: 100%; }
+#themeName { margin-right: auto; max-width: 92px; color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1.15; }
 .view-controls button { height: 44px; min-width: 44px; padding: 4px 10px; font-size: 20px; font-weight: 800; }
 .view-controls #zoomReset { min-width: 64px; font-size: 14px; }
 .view-controls #themeToggle { display: grid; place-items: center; padding: 8px; border-color: var(--accent); }
 .view-controls svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.moon-icon { display: none; }
-:root[data-theme="light"] .sun-icon { display: none; }
-:root[data-theme="light"] .moon-icon { display: block; }
+.theme-icon { display: none; }
+:root[data-theme="hc-light"] .hc-light-icon, :root[data-theme="hc-dark"] .hc-dark-icon, :root[data-theme="pretty-light"] .pretty-light-icon, :root[data-theme="pretty-dark"] .pretty-dark-icon { display: block; }
+.pretty-light-icon .girl-hair { fill: #52645f; stroke: #52645f; }
+.pretty-light-icon .girl-face { fill: #d8c5b8; stroke: #527d75; }
+.pretty-dark-icon .girl-hair { fill: #2c1838; stroke: #c084fc; }
+.pretty-dark-icon .girl-face { fill: #e9b8d0; stroke: #5eead4; }
+.girl-smile, .girl-star { fill: none; stroke: currentColor; }
 label { display: block; color: var(--label); margin: 0 0 11px; font-size: 15px; font-weight: 650; }
 input, select, button { font: inherit; }
 input, select { background: var(--input-bg); color: var(--input-text); border: 2px solid var(--border); }
@@ -80,7 +134,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 4px s
 label > input, label > select, .folder input { display: block; width: 100%; min-height: 44px; padding: 8px; margin-top: 4px; font-size: 18px; }
 .check { color: var(--text); font-size: 15px; }
 .check input { width: 22px; height: 22px; display: inline-block; vertical-align: middle; }
-.pair { display: grid; grid-template-columns: 1fr 75px; gap: 6px; }
+.coordinate-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.coordinate-pair label { min-width: 0; }
+.coordinate-pair input { min-width: 0; }
 .folder { display: grid; grid-template-columns: 1fr 48px; margin-top: 4px; }
 .folder input { margin: 0; min-width: 0; }
 .folder button { font-size: 22px; }

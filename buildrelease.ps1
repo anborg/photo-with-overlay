@@ -20,7 +20,6 @@ try {
     $outputPath = Join-Path $outputDirectory 'PhotoWithOverlay.exe'
     New-Item -ItemType Directory -Force $outputDirectory | Out-Null
 
-    & '.\generate-icon.ps1'
     go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build `
         -s `
         -skipbindings `
