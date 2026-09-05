@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -29,9 +30,25 @@ type Settings struct {
 // Defaults returns settings suitable for a first application launch.
 func Defaults() Settings {
 	home, _ := os.UserHomeDir()
-	return Settings{User: strings.ToUpper(os.Getenv("USERNAME")), OutputFolder: filepath.Join(home, "Pictures", "Field Photos"),
+	return Settings{User: defaultUser(), OutputFolder: filepath.Join(home, "Pictures", "Field Photos"),
 		WatermarkPosition: "bottom-left", WatermarkX: 0, WatermarkY: 1, WatermarkWidth: 0.42, FontFamily: "Arial", FontSize: 36, UseManualLocation: true,
 		ManualLatitude: 43.8561, ManualLongitude: -79.3370, ManualAddress: "Markham, ON"}
+}
+
+func defaultUser() string {
+	for _, candidate := range []string{os.Getenv("USERNAME"), os.Getenv("USER")} {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return strings.ToUpper(trimmed)
+		}
+	}
+	if current, err := user.Current(); err == nil {
+		for _, candidate := range []string{current.Username, current.Name} {
+			if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+				return strings.ToUpper(trimmed)
+			}
+		}
+	}
+	return "OPERATOR"
 }
 
 func path() string {
@@ -47,11 +64,17 @@ func Load() Settings {
 	if err == nil {
 		_ = json.Unmarshal(data, &s)
 	}
+	if strings.TrimSpace(s.User) == "" {
+		s.User = defaultUser()
+	}
 	return s
 }
 
 // Save validates and serializes settings to the user's config directory.
 func Save(s Settings) error {
+	if strings.TrimSpace(s.User) == "" {
+		s.User = defaultUser()
+	}
 	if strings.TrimSpace(s.User) == "" {
 		return &ValidationError{"operator is required"}
 	}

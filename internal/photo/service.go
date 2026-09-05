@@ -2,6 +2,7 @@
 package photo
 
 import (
+	"os"
 	"sync"
 	"time"
 )
@@ -32,4 +33,18 @@ type Item struct {
 	Name       string    `json:"name"`
 	Path       string    `json:"path"`
 	ModifiedAt time.Time `json:"modifiedAt"`
+}
+
+// DeleteMany removes validated JPEG photos from folder.
+func (s *Service) DeleteMany(paths []string, folder string) error {
+	for _, path := range paths {
+		clean, err := ValidPhotoPath(path, folder)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(clean); err != nil {
+			return err
+		}
+	}
+	return nil
 }

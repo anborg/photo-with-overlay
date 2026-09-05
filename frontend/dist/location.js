@@ -41,6 +41,33 @@ export async function getLocation(settings) {
 
 async function lookupAutomaticLocation() {
   showStatus('Getting GPS location…');
+  const nativeLocation = await tryNativeLocation();
+  const position = nativeLocation || await lookupBrowserLocation();
+  showStatus('Looking up address and nearby roads…');
+  const details = await backend().ReverseGeocode(position.latitude, position.longitude);
+  return {
+    latitude: position.latitude,
+    longitude: position.longitude,
+    accuracy: position.accuracy,
+    address: details.address,
+    roadClue: details.roadClue,
+    source: position.source
+  };
+}
+
+async function tryNativeLocation() {
+  if (!isMacOS()) return null;
+  if (typeof backend().GetCurrentLocation !== 'function') return null;
+  const position = await backend().GetCurrentLocation();
+  return {
+    latitude: position.latitude,
+    longitude: position.longitude,
+    accuracy: position.accuracy ?? null,
+    source: 'Automatic GPS'
+  };
+}
+
+async function lookupBrowserLocation() {
   const position = await new Promise((resolve, reject) =>
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: true,
@@ -48,14 +75,14 @@ async function lookupAutomaticLocation() {
       maximumAge: 10000
     })
   );
-  showStatus('Looking up address and nearby roads…');
-  const details = await backend().ReverseGeocode(position.coords.latitude, position.coords.longitude);
   return {
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
     accuracy: position.coords.accuracy,
-    address: details.address,
-    roadClue: details.roadClue,
-    source: 'Windows Location'
+    source: 'Automatic GPS'
   };
+}
+
+function isMacOS() {
+  return navigator.userAgent.includes('Mac') || navigator.platform.includes('Mac');
 }

@@ -61,3 +61,24 @@ func TestListReturnsNewestPhotoFirst(t *testing.T) {
 		t.Fatalf("unexpected items: %#v", items)
 	}
 }
+
+func TestDeleteManyRemovesSelectedPhotos(t *testing.T) {
+	folder := t.TempDir()
+	deletePath := filepath.Join(folder, "delete.jpg")
+	keepPath := filepath.Join(folder, "keep.jpg")
+	for _, path := range []string{deletePath, keepPath} {
+		if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := NewService().DeleteMany([]string{deletePath}, folder); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(deletePath); !os.IsNotExist(err) {
+		t.Fatalf("delete target still exists: %v", err)
+	}
+	if _, err := os.Stat(keepPath); err != nil {
+		t.Fatalf("expected unselected file to remain: %v", err)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -36,6 +37,13 @@ type SaveRequest struct {
 	OutputFolder   string   `json:"outputFolder"`
 }
 
+// CurrentLocation contains native location coordinates and accuracy.
+type CurrentLocation struct {
+	Latitude  float64  `json:"latitude"`
+	Longitude float64  `json:"longitude"`
+	Accuracy  *float64 `json:"accuracy"`
+}
+
 // NewApp creates the Wails application service and its HTTP client.
 func NewApp() *App {
 	return &App{photos: photo.NewService(), client: &http.Client{Timeout: 8 * time.Second}}
@@ -52,6 +60,11 @@ func (a *App) SaveSettings(settings config.Settings) error { return config.Save(
 // SelectOutputFolder opens the native folder picker at the current output folder.
 func (a *App) SelectOutputFolder(current string) (string, error) {
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "Select photo output folder", DefaultDirectory: current})
+}
+
+// GetCurrentLocation returns a native OS location reading when available.
+func (a *App) GetCurrentLocation() (CurrentLocation, error) {
+	return getCurrentLocation()
 }
 
 // SavePhoto decodes a frontend JPEG data URL and saves the photo with metadata.
@@ -80,13 +93,27 @@ func (a *App) Thumbnail(path, folder string) (string, error) {
 	return a.photos.Thumbnail(path, folder)
 }
 
+// PhotoDataURL returns the original photo as a JPEG data URL for in-app preview.
+func (a *App) PhotoDataURL(path, folder string) (string, error) {
+	return a.photos.PhotoDataURL(path, folder)
+}
+
 // ShowPhoto opens a saved photo with the operating system's default application.
 func (a *App) ShowPhoto(path, folder string) error {
 	clean, err := photo.ValidPhotoPath(path, folder)
 	if err != nil {
 		return err
 	}
-	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", clean).Start()
+	var command *exec.Cmd
+	switch goruntime.GOOS {
+	case "darwin":
+		command = exec.Command("open", clean)
+	case "windows":
+		command = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", clean)
+	default:
+		command = exec.Command("xdg-open", clean)
+	}
+	return command.Start()
 }
 
 // DeletePhoto permanently removes a validated photo from its output folder.
@@ -96,6 +123,11 @@ func (a *App) DeletePhoto(path, folder string) error {
 		return err
 	}
 	return os.Remove(clean)
+}
+
+// DeletePhotos permanently removes validated photos from the output folder.
+func (a *App) DeletePhotos(paths []string, folder string) error {
+	return a.photos.DeleteMany(paths, folder)
 }
 
 // LocationDetails contains a reverse-geocoded address and nearby-road clue.

@@ -4,7 +4,7 @@ import {applySettings, readSettings, saveSettings, setupSettingsControls} from '
 import {setupCamera} from './camera.js';
 import {getLocation, refreshAutomaticLocation} from './location.js';
 import {createWatermarkController, drawWatermark} from './watermark.js';
-import {refreshGallery} from './gallery.js';
+import {refreshGallery, setupGallery} from './gallery.js';
 import {setupLayoutControls} from './layout.js';
 
 let currentSettings = null;
@@ -13,6 +13,7 @@ let currentRoadClue = '';
 
 setupViewPreferences();
 setupLayoutControls();
+setupGallery();
 
 async function persistSettings() {
   currentSettings = await saveSettings(watermark.state());

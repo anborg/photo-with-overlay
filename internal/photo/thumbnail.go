@@ -11,6 +11,19 @@ import (
 	"golang.org/x/image/draw"
 )
 
+// PhotoDataURL returns the validated original JPEG as a data URL.
+func (s *Service) PhotoDataURL(path, folder string) (string, error) {
+	cleanPath, err := ValidPhotoPath(path, folder)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("read photo: %w", err)
+	}
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
 // Thumbnail scales a photo to 280 pixels wide while preserving its aspect
 // ratio, then returns it as a JPEG data URL for display by the frontend.
 func (s *Service) Thumbnail(path, folder string) (string, error) {

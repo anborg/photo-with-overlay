@@ -1,0 +1,35 @@
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>photo-with-overlay</string>
+        <key>CFBundleExecutable</key>
+        <string>PhotoWithOverlay</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.wails.photo-with-overlay</string>
+        <key>CFBundleVersion</key>
+        <string>1.0.0</string>
+        <key>CFBundleGetInfoString</key>
+        <string>Built using Wails (https://wails.io)</string>
+        <key>CFBundleShortVersionString</key>
+        <string>1.0.0</string>
+        <key>CFBundleIconFile</key>
+        <string>iconfile</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>10.13.0</string>
+        <key>NSHighResolutionCapable</key>
+        <string>true</string>
+        <key>NSCameraUsageDescription</key>
+        <string>Field Photo Capture needs camera access to preview and capture site photos.</string>
+        <key>NSLocationUsageDescription</key>
+        <string>Field Photo Capture needs location access to stamp GPS coordinates onto captured photos.</string>
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>Field Photo Capture needs location access to stamp GPS coordinates onto captured photos.</string>
+        <key>NSHumanReadableCopyright</key>
+        <string>Copyright.........</string>
+        
+        
+    </dict>
+</plist>
