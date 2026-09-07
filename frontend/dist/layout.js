@@ -7,6 +7,7 @@ export function setupLayoutControls() {
   const galleryToggle = byId('galleryDrawerToggle');
   const about = byId('aboutDialog');
   const compactScreen = matchMedia('(max-width: 700px)').matches;
+  let userToggledDrawer = false;
 
   main.classList.remove('panels-hidden');
   main.classList.toggle('settings-closed', savedState('settingsDrawerClosed', compactScreen));
@@ -21,11 +22,13 @@ export function setupLayoutControls() {
   };
 
   const toggleSettings = () => {
+    userToggledDrawer = true;
     main.classList.toggle('settings-closed');
     localStorage.setItem('settingsDrawerClosed', String(main.classList.contains('settings-closed')));
     updateToggle();
   };
   const toggleGallery = () => {
+    userToggledDrawer = true;
     main.classList.toggle('gallery-closed');
     localStorage.setItem('galleryDrawerClosed', String(main.classList.contains('gallery-closed')));
     updateToggle();
@@ -36,6 +39,13 @@ export function setupLayoutControls() {
   galleryToggle.addEventListener('click', toggleGallery);
   document.addEventListener('layoutchange', updateToggle);
   updateToggle();
+  setTimeout(() => {
+    if (userToggledDrawer) return;
+    main.classList.add('settings-closed', 'gallery-closed');
+    localStorage.setItem('settingsDrawerClosed', 'true');
+    localStorage.setItem('galleryDrawerClosed', 'true');
+    updateToggle();
+  }, 3000);
 
   byId('aboutOpen').addEventListener('click', () => about.showModal());
   const goLink = about.querySelector('.made-with strong');

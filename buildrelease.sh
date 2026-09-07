@@ -35,7 +35,7 @@ if [[ "$skip_tests" != true ]]; then
 fi
 
 output_name="PhotoWithOverlay"
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build \
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build \
   -s \
   -skipbindings \
   -trimpath \
