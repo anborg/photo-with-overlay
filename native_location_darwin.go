@@ -3,7 +3,11 @@
 package main
 
 /*
-#cgo CFLAGS: -x objective-c
+// App's declared floor is macOS 11.0 (build/darwin/Info.plist
+// LSMinimumSystemVersion) — set explicitly since Wails' own default deployment
+// target (10.13) is lower, which would otherwise make the compiler treat the
+// CLLocationManager APIs below as needing availability guards they don't.
+#cgo CFLAGS: -x objective-c -mmacosx-version-min=11.0
 #cgo LDFLAGS: -framework CoreLocation -framework Foundation
 
 #import <CoreLocation/CoreLocation.h>
@@ -28,12 +32,7 @@ typedef struct {
 @implementation PhotoWithOverlayLocationDelegate
 
 - (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
-	CLAuthorizationStatus status;
-	if (@available(macOS 11.0, *)) {
-		status = manager.authorizationStatus;
-	} else {
-		status = [CLLocationManager authorizationStatus];
-	}
+	CLAuthorizationStatus status = manager.authorizationStatus;
 	if (status == kCLAuthorizationStatusAuthorized || status == kCLAuthorizationStatusAuthorizedAlways) {
 		[manager startUpdatingLocation];
 		return;
@@ -83,12 +82,7 @@ static NativeLocationResult PhotoWithOverlayRequestCurrentLocation(double timeou
 		delegate.manager.delegate = delegate;
 		delegate.manager.desiredAccuracy = kCLLocationAccuracyBest;
 
-		CLAuthorizationStatus status;
-		if (@available(macOS 11.0, *)) {
-			status = delegate.manager.authorizationStatus;
-		} else {
-			status = [CLLocationManager authorizationStatus];
-		}
+		CLAuthorizationStatus status = delegate.manager.authorizationStatus;
 
 		if (status == kCLAuthorizationStatusNotDetermined) {
 			[delegate.manager requestWhenInUseAuthorization];

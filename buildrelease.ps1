@@ -21,8 +21,6 @@ try {
     New-Item -ItemType Directory -Force $outputDirectory | Out-Null
 
     go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build `
-        -s `
-        -skipbindings `
         -trimpath `
         -ldflags '-s -w -buildid=' `
         -o PhotoWithOverlay.exe

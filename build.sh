@@ -32,8 +32,6 @@ fi
 
 output_name="PhotoWithOverlay"
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 build \
-  -s \
-  -skipbindings \
   -trimpath \
   -ldflags "-s -w" \
   -o "$output_name"
