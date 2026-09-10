@@ -10,7 +10,6 @@ const compactScreen = matchMedia('(max-width: 700px)').matches;
 const settingsClosed = ref(savedState('settingsDrawerClosed', compactScreen));
 const galleryClosed = ref(savedState('galleryDrawerClosed', compactScreen));
 const aboutDialogEl = ref<HTMLDialogElement | null>(null);
-let userToggledDrawer = false;
 
 function toggleLabel(closed: boolean, panelName: string) {
   const action = closed ? 'Show' : 'Hide';
@@ -20,21 +19,13 @@ function toggleLabel(closed: boolean, panelName: string) {
 const settingsToggleLabel = computed(() => toggleLabel(settingsClosed.value, 'settings'));
 const galleryToggleLabel = computed(() => toggleLabel(galleryClosed.value, 'gallery'));
 
-setTimeout(() => {
-  if (userToggledDrawer) return;
-  settingsClosed.value = true;
-  galleryClosed.value = true;
-}, 3000);
-
 export function useLayout() {
   function toggleSettings() {
-    userToggledDrawer = true;
     settingsClosed.value = !settingsClosed.value;
     localStorage.setItem('settingsDrawerClosed', String(settingsClosed.value));
   }
 
   function toggleGallery() {
-    userToggledDrawer = true;
     galleryClosed.value = !galleryClosed.value;
     localStorage.setItem('galleryDrawerClosed', String(galleryClosed.value));
   }

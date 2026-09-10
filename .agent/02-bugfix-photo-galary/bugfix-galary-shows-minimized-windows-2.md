@@ -3,6 +3,11 @@
 Continues [bugfix-galary-shows-minimized-windows.md](bugfix-galary-shows-minimized-windows.md). Rounds 1-4 there ruled out
 the CSS height chain, WebKit-vs-Blink engine differences, Vue's async image mount timing, and WebView2 asset caching.
 
+> **SOLVED — see [Round 6](#round-6--root-cause-found-and-measured) at the bottom.** The gallery collapses whenever the
+> UI zoom is above 1.0, because `#gallery { padding-top: 58px }` plus the horizontal scrollbar consume the entire
+> gallery track once the zoom rules shrink it from 160 px to 92 px / 76 px. Not an engine bug, not a Vue regression, not
+> platform-specific. Everything between here and Round 6 is the trail that got there, including several dead ends.
+
 ## The new clue
 
 Two ways of launching the same code behave differently on the same Windows machine:
@@ -175,6 +180,245 @@ mechanism is dead as an explanation. The remaining dev-vs-prod deltas would then
 frontend with `<link rel=stylesheet>` in `<head>` versus JS-injected `<style>`, much faster boot, and DevTools being
 present — none of which are diagnosable by reading code. At that point only next step 2, measuring inside the actual
 failing build, can make progress.
+
+## Round 5c — valid test, and the hypothesis is DEAD
+
+The sequence above finally ran under the intended condition. Step 3:
+
+```
+['settings-closed gallery-closed', '0px', 'true']
+```
+
+Precondition held: `main.gallery-closed` present at first paint, `.gallery-wrap` measured **0 px**, localStorage key
+`"true"`. So the `PhotoCard`s did mount and resolve their thumbnails inside a zero-height row — exactly the scenario
+rounds 5/5a/5b were trying to reach.
+
+After clicking the Gallery handle open, step 4:
+
+```
+['data:image/jpeg;base64,/9j/2wC', 280, 157,
+ '.gallery-wrap = 160px', '#gallery = 146.143px', '.photo = 73.2607px',
+ '.photo-open = 69.5397px', '.thumb = 69.5397px', 'img = 69.5397px']
+```
+
+**Those numbers are correct, not broken.** Working it through (note `getComputedStyle().height` reports the border-box
+height here, because `* { box-sizing: border-box }`):
+
+| box             | expected                                                              | measured      |
+| --------------- | --------------------------------------------------------------------- | ------------- |
+| `.gallery-wrap` | `--gallery-height` = 160 px                                           | 160 px ✓      |
+| `#gallery`      | 160 − 6 − 6 padding − 2 border-top = 146 px                           | 146.143 px ✓  |
+| `.photo`        | 146.143 − 58 `padding-top` − ~14.9 scrollbar = **73.3 px**            | 73.2607 px ✓  |
+| `.photo-open`   | 73.26 − ~3.7 (2 px borders, DPI-snapped)                              | 69.5397 px ✓  |
+
+The ~14.9 px that at first looked like a shortfall is the **horizontal scrollbar** of
+`#gallery { overflow-x: auto }` — visible in the screenshot. Every link in the percentage chain resolved, the thumbnail
+loaded (`data:image/jpeg;base64,…`, natural size 280×157), and the screenshot shows proper rectangular cards with
+photos in them.
+
+So: mounting the cards into a 0 px grid row **does not** strand the layout, and the localStorage/origin asymmetry —
+while a real difference between the two launch modes — is not the cause of this bug. Rounds 1-5c have now eliminated
+every theory reachable from reading code or from the dev build.
+
+Retained from this round as useful facts:
+
+- A correct gallery has `.photo` ≈ 73 px, not ≈ 146 px: 58 px goes to `#gallery`'s `padding-top` (clearance for the
+  absolutely positioned selection bar) and ~15 px to the horizontal scrollbar. Use ~73 px as the reference when
+  comparing against the failing build.
+- The deduction in "Why the hairlines mean laid out while collapsed" still holds for the release build, just without the
+  collapsed-at-mount explanation: a 4 px card means the `<img>` contributed **zero** height there, whereas here a
+  loaded 280×157 thumbnail is present and the chain resolves normally.
+
+Only next step 2 remains: measure inside the build that actually fails.
+
+## Round 6 — root cause found and measured
+
+Built with `wails build -debug`, ran `run.ps1`, reproduced the bug, and measured it in place. Console:
+
+```
+['settings-closed gallery-closed zoom-focus', '0px', 'false']
+
+['data:image/jpeg;base64,/9j/2wC', 280, 157,
+ '.gallery-wrap = 75.9981px', '#gallery = 62.1415px', '.photo = 3.72093px',
+ '.photo-open = 0px', '.thumb = 0px', 'img = 0px']
+```
+
+Two things jump out. `main`'s class list contains **`zoom-focus`**, which was absent in the dev window. And
+`.gallery-wrap` is **76 px**, not the 160 px it was in dev.
+
+### The chain, measured
+
+| box             | why it is that size                                                    | measured       |
+| --------------- | ---------------------------------------------------------------------- | -------------- |
+| `.gallery-wrap` | `main.zoom-focus .camera-panel` forces the gallery track to **76 px**  | 75.9981 px     |
+| `#gallery`      | 76 − 12 padding − 2 border-top = 62 px                                 | 62.1415 px     |
+| content left    | 62.14 − **58 px `padding-top`** = 4.14 px, then ~14.9 px scrollbar → **negative, clamped to 0** | — |
+| `.photo`        | `height: 100%` of 0, plus its own 2 px borders (DPI-snapped)           | **3.72093 px** |
+| `.photo-open` / `.thumb` / `img` | `height: 100%` of 0                                   | **0 px**       |
+
+The thumbnail itself is perfectly healthy — `data:image/jpeg;base64,…`, natural size 280×157. It is simply being
+rendered into a box with zero height. `.photo = 3.72 px` is nothing but its own border, which is exactly the hairline in
+the original bug screenshot.
+
+### Root cause
+
+`#gallery { padding-top: 58px }` (`frontend/src/style.css:254-256`) reserves clearance for
+`.gallery-selection-bar`, which is `position: absolute; height: 52px` (`style.css:206-216`) and therefore out of flow.
+That 58 px is a **fixed** cost, while the gallery track height is not:
+
+- `.camera-panel { grid-template-rows: minmax(0, 1fr) var(--gallery-height) }` — `style.css:977-982`, 160 px normally
+- `main.zoom-compact .camera-panel { grid-template-rows: minmax(0, 1fr) 92px }` — `style.css:675-677`
+- `main.zoom-focus .camera-panel { grid-template-rows: minmax(0, 1fr) 76px }` — `style.css:681-683`
+
+Card height available = track − 14 (`.gallery-wrap` padding 12 + border-top 2) − 58 (`#gallery` padding-top) − ~15
+(horizontal scrollbar from `overflow-x: auto`):
+
+| mode           | track | card height                | result                     |
+| -------------- | ----- | -------------------------- | -------------------------- |
+| normal         | 160   | 160 − 14 − 58 − 15 = **73** | fine (matches round 5c)   |
+| `zoom-compact` | 92    | 92 − 14 − 58 − 15 = **5**   | hairline                  |
+| `zoom-focus`   | 76    | 76 − 14 − 58 − 15 = **−11** | clamped to 0 — hairline   |
+
+So the gallery is broken in **both** zoom modes and fine only at zoom 1.0. Nothing platform-specific about it.
+
+### Why it looked like a Windows-only / dev-vs-prod / post-Vue bug
+
+`zoom` is read from `localStorage.getItem('uiZoom')` (`useViewPreferences.ts:24`) and the classes are derived from it:
+`zoomCompact = zoom > 1 && zoom < 1.3`, `zoomFocus = zoom >= 1.3` (`useViewPreferences.ts:30-31`).
+
+- **dev vs prod** — localStorage is per-origin, and dev runs on `wails.localhost:34115` while the release build runs on
+  `wails.localhost`. The dev origin had no `uiZoom` (class list was just `settings-closed gallery-closed`, track
+  160 px); the production origin had `uiZoom >= 1.3`. The round-5 instinct that a per-origin localStorage key explained
+  the split was right in kind — just the wrong key. It is `uiZoom`, not `galleryDrawerClosed`.
+- **Windows vs macOS** — nothing to do with WebKit vs Blink. Someone pressed the zoom-in control on the tablet (very
+  plausible on a small rugged screen) and it persisted; the Mac is still at 1.0.
+- **"not present before Vue"** — retired. `git grep` on the pre-Vue commit `d9de302` shows
+  `frontend/dist/view-preferences.js:15-22` used the *same* `uiZoom` key with the *same* 1.0/1.3 thresholds, and
+  `frontend/dist/style.css:673-682` had the same 92 px / 76 px overrides. The defect predates the Vue migration; the
+  zoom setting simply got changed around that time.
+
+### Secondary defect spotted in the same screenshot
+
+The two zoom systems disagree. `main.zoom-focus` also sets `--gallery-height: 105px` (`style.css:1084-1088`), but
+`main.zoom-focus .camera-panel` (specificity 0,2,1) beats `.camera-panel` (0,1,0), so the **track** is 76 px while
+`--gallery-height` still reads 105 px. Since `.gallery-drawer-handle { bottom: var(--gallery-height) }`
+(`style.css:1039-1045`), the Gallery button is positioned 105 px up while the band it belongs to is only 76 px tall —
+which is why it floats above the gallery with a black gap in the screenshot. The `grid-template-rows` overrides at
+`style.css:675-683` are leftovers from the pre-drawer layout and should not be fighting `--gallery-height` at all.
+
+### Immediate workaround (no rebuild)
+
+Press the zoom-out control in the header until the zoom is back to 1.0, or from the console:
+
+```js
+localStorage.setItem('uiZoom', '1'); location.reload()
+```
+
+### Reproducing at will, in dev
+
+The bug is now a one-liner in the dev window, which makes verifying any fix trivial:
+
+```js
+localStorage.setItem('uiZoom', '1.3'); location.reload()   // zoom-focus → hairlines
+localStorage.setItem('uiZoom', '1.1'); location.reload()   // zoom-compact → hairlines
+localStorage.setItem('uiZoom', '1');   location.reload()   // normal → correct
+```
+
+### Fix options
+
+The core problem is that a fixed 58 px clearance cannot coexist with a 76-92 px track. Three changes compose; numbers
+below are the resulting card heights.
+
+1. **Delete the stale track overrides** at `style.css:675-677` and `style.css:681-683` so `--gallery-height` is the
+   single source of truth (130 px compact / 105 px focus). Also fixes the drawer-handle gap above. → compact 43 px,
+   focus 18 px.
+2. **Make the bar's footprint a variable** instead of a magic number: `--gallery-bar: 52px` driving both
+   `.gallery-selection-bar { height: var(--gallery-bar) }` and `#gallery { padding-top: calc(var(--gallery-bar) + 6px) }`,
+   set to `40px` under `main.zoom-compact` / `main.zoom-focus`. → compact 55 px, focus 30 px.
+3. **Stop paying 15 px for the scrollbar**: `#gallery { scrollbar-width: thin }` (~8 px instead of ~15). → compact
+   62 px, focus 37 px.
+
+With all three: normal 80 px, compact 62 px, focus 37 px — every mode shows a real thumbnail.
+
+Structural alternative, more invasive but immune to this class of bug: make `.gallery-wrap` a flex column, put
+`.gallery-selection-bar` back in flow as `flex: 0 0 auto`, and give `#gallery` `flex: 1 1 auto; min-height: 0` with no
+`padding-top`. The leftover space can then never go negative — though the bar still needs to shrink in zoom modes for
+the cards to be usefully tall.
+
+Blunter option if bigger cards in zoom modes matter more than the Select/Delete affordance: hide the selection bar in
+zoom modes and drop the padding, giving focus 76 px and compact 101 px cards.
+
+## Round 7 — fix applied
+
+Took the structural route rather than re-tuning the magic numbers, because it **deletes** the coupling instead of
+maintaining it: the selection bar now takes the height it needs, `#gallery` takes whatever is left, and no rule
+reserves space with a hard-coded number. There is nothing left to get out of sync when `--gallery-height` changes.
+
+### `frontend/src/style.css`
+
+1. `.gallery-wrap` — added `display: flex; flex-direction: column`.
+2. `.gallery-selection-bar` — dropped `position: absolute`, `inset: 0 0 auto 0`, `z-index: 4` and `height: 52px`; now
+   `flex: 0 0 auto` with `padding: 0 10px 6px`, so it is in normal flow and sized by its own content (the 38 px delete
+   button). Background and border-bottom kept, so it still reads as a header strip.
+3. `#gallery` — the two duplicate rules merged into one: `flex: 1 1 auto; min-height: 0`, replacing `height: 100%` and
+   **deleting `padding-top: 58px`** — the actual cause. Added `scrollbar-width: thin` to stop the horizontal scrollbar
+   eating ~15 px.
+4. Deleted `main.zoom-compact .camera-panel { grid-template-rows: … 92px }` and
+   `main.zoom-focus .camera-panel { grid-template-rows: … 76px }`. `--gallery-height` (130 px / 105 px) is now the only
+   thing that sets the gallery height, which also fixes the drawer-handle gap, since the handle is positioned at
+   `bottom: var(--gallery-height)`.
+5. Deleted the dead `grid-template-rows: minmax(0, 1fr) 105px` from `.camera-panel` in the `max-width: 700px` media
+   query — it was already being overridden by the later `.camera-panel` rule at equal specificity, so it had no effect.
+6. Deleted the `.gallery-selection-bar { height: 46px }` and `#gallery { padding-top: 52px }` overrides from the mobile
+   media query; with the bar in flow there is nothing to keep in sync. Kept its `padding` tweak.
+
+### `frontend/src/composables/useLayout.ts`
+
+Removed the 3-second auto-collapse: the top-level `setTimeout`, the `userToggledDrawer` module flag it needed, and the
+two `userToggledDrawer = true` assignments in `toggleSettings`/`toggleGallery`. The drawers now do exactly one thing —
+what the user last set, restored from localStorage. Both toggle functions are two lines each.
+
+The CSS drawer animations (`transition: transform/opacity`) were left in place: they are declarative CSS and touch no
+state logic, so they were not part of what made this hard to reason about. The `prefers-reduced-motion` block that
+disables them stays too.
+
+### Expected card heights after the fix
+
+Track − 14 (`.gallery-wrap` padding 12 + border-top 2) − ~45 (bar: 38 px button + 6 px padding + 1 px border) − ~8
+(thin scrollbar):
+
+| mode           | track  | card height |
+| -------------- | ------ | ----------- |
+| normal         | 160    | ~93 px      |
+| `zoom-compact` | 130    | ~63 px      |
+| `zoom-focus`   | 105    | ~38 px      |
+| mobile normal  | 140    | ~73 px      |
+
+Every mode now leaves real room for a thumbnail. Previously: 73 / 5 / −11.
+
+### Verified so far
+
+- `vue-tsc --noEmit && vite build` clean; `go test ./...` passes; `wails build -debug` succeeds.
+- Emitted `dist` CSS checked directly: no `padding-top: 58px`/`52px` and no `92px`/`76px`/`105px` track overrides
+  remain, and the `--gallery-height` values are intact.
+- Confirmed working on the Windows tablet: full-height thumbnails in the gallery.
+- Still unverified: the `zoom-compact` (`uiZoom` 1.1) and mobile/portrait breakpoints.
+
+### Follow-up — translucent chrome strips
+
+The opaque black bars either side of the gallery were raised separately. Both now use the same translucency as `aside`,
+which was already the app's most transparent surface:
+
+- `.gallery-selection-bar` — was `color-mix(in srgb, var(--panel) 92%, #000)`, i.e. effectively solid black. Now
+  `color-mix(in srgb, var(--panel) 30%, transparent)` plus `backdrop-filter: blur(7px)` to match `.gallery-wrap`. The
+  camera preview shows through it, the same way it already showed through the gallery band around the thumbnails.
+- `footer` — was 72 %, now 30 %, for one consistent value across the chrome.
+
+Note the footer will still read as dark: it sits in `main`'s second grid row, **below** `.camera-panel`, so what is
+behind it is the page background (`--page`), not the camera preview. Translucency cannot reveal a photo that is not
+painted there. Showing the preview through the footer needs a layout change — the footer would have to overlay
+`.camera-panel`, which is where the gallery band already lives, so the two would have to be stacked or the gallery
+moved. Not attempted here.
 
 ## Next steps to confirm
 

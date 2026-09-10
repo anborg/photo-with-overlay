@@ -194,9 +194,14 @@ main {
   outline: 4px solid var(--focus);
   outline-offset: 3px;
 }
+/* Column flow: the selection bar takes the height it needs, #gallery gets the
+   rest. Nothing here reserves space with a hard-coded number, so the cards
+   survive any --gallery-height. */
 .gallery-wrap {
   position: relative;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   background: color-mix(in srgb, var(--gallery) 30%, transparent);
   border-top: 2px solid color-mix(in srgb, var(--border) 72%, transparent);
   overflow: hidden;
@@ -204,15 +209,13 @@ main {
   backdrop-filter: blur(7px);
 }
 .gallery-selection-bar {
-  position: absolute;
-  inset: 0 0 auto 0;
-  z-index: 4;
-  height: 52px;
-  padding: 0 10px;
+  flex: 0 0 auto;
+  padding: 0 10px 6px;
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--panel) 92%, #000);
+  background: color-mix(in srgb, var(--panel) 30%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
+  backdrop-filter: blur(7px);
 }
 .selection-summary {
   display: inline-flex;
@@ -246,13 +249,12 @@ main {
   stroke-linejoin: round;
 }
 #gallery {
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   gap: 10px;
   overflow-x: auto;
-}
-#gallery {
-  padding-top: 58px;
+  scrollbar-width: thin;
 }
 #emptyGallery {
   position: absolute;
@@ -630,7 +632,7 @@ footer {
   align-items: center;
   gap: 12px;
   padding: 5px 8px;
-  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  background: color-mix(in srgb, var(--panel) 30%, transparent);
   border-radius: 8px;
   backdrop-filter: blur(8px);
 }
@@ -672,14 +674,10 @@ footer {
 main.zoom-compact, main.zoom-focus {
   grid-template-columns: minmax(0, 1fr) 225px;
 }
-main.zoom-compact .camera-panel {
-  grid-template-rows: minmax(0, 1fr) 92px;
-}
+/* Gallery height in the zoom modes comes from --gallery-height alone (see the
+   overlay-drawer section below); only the card width changes here. */
 main.zoom-compact .photo {
   flex-basis: 132px;
-}
-main.zoom-focus .camera-panel {
-  grid-template-rows: minmax(0, 1fr) 76px;
 }
 main.zoom-focus .photo {
   flex-basis: 116px;
@@ -943,7 +941,6 @@ dialog dd:last-of-type::after {
   }
   .camera-panel {
     min-height: 55dvh;
-    grid-template-rows: minmax(0, 1fr) 105px;
   }
   footer {
     grid-template-columns: minmax(0, 1fr) auto minmax(170px, 45%);
@@ -1153,11 +1150,7 @@ main.zoom-focus {
     max-height: 62vh;
   }
   .gallery-selection-bar {
-    height: 46px;
-    padding: 0 8px;
-  }
-  #gallery {
-    padding-top: 52px;
+    padding: 0 8px 6px;
   }
   #selectionCount {
     font-size: 13px;
