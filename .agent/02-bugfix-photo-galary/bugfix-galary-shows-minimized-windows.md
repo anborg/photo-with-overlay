@@ -5,7 +5,7 @@ Bug issue: It shows correctly in macos. However in windows, the thumnail area lo
 The bug is not present in macos: ![good-galary-in-macos.png](good-galary-in-macos.png)
 This is ui related - i.e frontend/ code
 
-Todo: Investigate the reason, and document here. 
+Todo: Investigate the reason, and document here. 1 
 
 ## Investigation
 
