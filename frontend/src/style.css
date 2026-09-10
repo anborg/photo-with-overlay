@@ -105,6 +105,7 @@ main {
 .camera-panel {
   grid-column: 1;
   grid-row: 1;
+  height: 100%;
   min-width: 0;
   background: var(--panel);
   border: 2px solid var(--border);
